@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Clock, Users, ChefHat, Utensils, Heart, Star, Share2, Bookmark, Printer, Filter, Plus, Minus } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { saveRecipe, deleteRecipe, deleteAllRecipes } from '../services/recipeApi';
+import { useEffect, useMemo, useState } from 'react';
+import { saveRecipe, deleteRecipe, deleteAllRecipes, rateRecipe, addFavorite, removeFavorite, fetchFavorites } from '../services/recipeApi';
+import RatingStars from './RatingStars';
 
 interface RecipeDisplayProps {
   recipes: Recipe[];
@@ -73,6 +74,45 @@ export default function RecipeDisplay({ recipes, onBack }: RecipeDisplayProps) {
   const [showNutrition, setShowNutrition] = useState(true);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [list, setList] = useState<Recipe[]>(recipes);
+  const [userRatings, setUserRatings] = useState<Record<string, number>>({});
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  const [clientToServerIdMap, setClientToServerIdMap] = useState<Record<string, string>>({});
+
+  const handleRatingChange = async (recipe: Recipe, rating: number) => {
+    try {
+      const { serverId } = await ensureRecipeHasDbId(recipe);
+      setUserRatings(prev => ({ ...prev, [serverId]: rating }));
+      await rateRecipe(serverId, rating);
+      alert('Thank you for your rating');
+    } catch (e: any) {
+      alert('Failed to save rating');
+    }
+  };
+
+  // Resolve whether an id looks like a Mongo ObjectId
+  const isMongoId = (id: string) => /^[0-9a-fA-F]{24}$/.test(id);
+
+  // Ensure a recipe exists in DB and return its server id
+  const ensureRecipeHasDbId = async (recipe: Recipe): Promise<{ serverId: string; updated: Recipe | null }> => {
+    if (isMongoId(recipe.id)) {
+      return { serverId: recipe.id, updated: null };
+    }
+    const saved = await saveRecipe(recipe);
+    const serverId = saved.id;
+    setClientToServerIdMap(prev => ({ ...prev, [recipe.id]: serverId }));
+    setList(prev => prev.map(r => (r.id === recipe.id ? { ...r, id: serverId } : r)));
+    return { serverId, updated: { ...recipe, id: serverId } };
+  };
+
+  // Load favorites on mount to reflect heart state
+  useEffect(() => {
+    (async () => {
+      try {
+        const ids = await fetchFavorites();
+        setFavoriteIds(new Set(ids));
+      } catch {}
+    })();
+  }, []);
 
   // Filters
   const [selectedDifficulty, setSelectedDifficulty] = useState<'All' | 'Easy' | 'Medium' | 'Hard'>('All');
@@ -239,6 +279,21 @@ export default function RecipeDisplay({ recipes, onBack }: RecipeDisplayProps) {
           </CardHeader>
 
           <CardContent className="space-y-8">
+            {/* Rating in detail view */}
+            <div className="flex items-center justify-center">
+              <RatingStars
+                value={userRatings[selectedRecipe.id] || 0}
+                onChange={async (next) => {
+                  try {
+                    const { serverId } = await ensureRecipeHasDbId(selectedRecipe);
+                    setUserRatings(prev => ({ ...prev, [serverId]: next }));
+                    await rateRecipe(serverId, next);
+                    alert('Thank you for your rating');
+                  } catch (e) { alert('Failed to save rating'); }
+                }}
+                size="lg"
+              />
+            </div>
             {/* Ingredients Section */}
             <div className="bg-white rounded-2xl p-6 border border-slate-200">
               <h3 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
@@ -348,16 +403,20 @@ export default function RecipeDisplay({ recipes, onBack }: RecipeDisplayProps) {
             <div className="w-10 h-10 bg-slate-900 rounded-md flex items-center justify-center">
               <Star className="w-5 h-5 text-white" />
             </div>
-            <h2 className="text-2xl font-bold text-slate-900">Recipes</h2>
+            <h2 className="text-2xl font-bold text-slate-900">
+              Generated Recipes
+            </h2>
           </div>
-          <p className="text-slate-600 mb-2">We've created {recipes.length} recipes based on your inputs</p>
+          <p className="text-slate-600 mb-2">
+            We've created {recipes.length} recipes based on your inputs
+          </p>
         </div>
         <div className="w-[220px] flex justify-end">
           <Button
             variant="outline"
             size="sm"
             onClick={async () => {
-              if (!confirm('Delete all saved recipes?')) return;
+              if (!confirm('Delete all generated recipes?')) return;
               try {
                 await deleteAllRecipes();
                 setList(prev => prev.filter(() => false));
@@ -371,8 +430,8 @@ export default function RecipeDisplay({ recipes, onBack }: RecipeDisplayProps) {
         </div>
       </div>
 
-      {/* Filters */}
-      <Card className="border border-slate-200 shadow-sm bg-white">
+      {/* Filters (sticky) */}
+      <Card className="border border-slate-200 shadow-sm bg-white lg:sticky lg:top-20 lg:z-30 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60">
         <CardContent className="p-4">
           <div className="flex items-center gap-3 mb-3 text-slate-700 font-semibold">
             <Filter className="w-4 h-4" /> Filters
@@ -427,6 +486,23 @@ export default function RecipeDisplay({ recipes, onBack }: RecipeDisplayProps) {
 
       {/* Recipe Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Skeletons as placeholders to improve perceived performance */}
+        {filteredRecipes.length === 0 && (
+          <>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={`skeleton-${i}`} className="rounded-2xl border border-slate-200 p-6 bg-white animate-pulse">
+                <div className="h-5 w-1/2 bg-slate-200 rounded mb-3" />
+                <div className="h-4 w-3/4 bg-slate-200 rounded mb-6" />
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  <div className="h-10 bg-slate-100 rounded" />
+                  <div className="h-10 bg-slate-100 rounded" />
+                  <div className="h-10 bg-slate-100 rounded" />
+                </div>
+                <div className="h-9 bg-slate-100 rounded" />
+              </div>
+            ))}
+          </>
+        )}
         {filteredRecipes.map((recipe) => (
           <Card
             key={recipe.id}
@@ -451,92 +527,108 @@ export default function RecipeDisplay({ recipes, onBack }: RecipeDisplayProps) {
                 </div>
               </div>
 
-              {/* Recipe Meta */}
-              <div className="flex items-center gap-4 mb-4 flex-wrap">
-                <div className="flex items-center gap-1 text-sm text-slate-600">
-                  <Clock className="w-4 h-4" />
-                  {recipe.time}
-                </div>
-                <div className="flex items-center gap-1 text-sm text-slate-600">
-                  <Users className="w-4 h-4" />
-                  {recipe.servings} servings
-                </div>
-                <Badge className={`${getDifficultyColor(recipe.difficulty)}`}>
-                  {getDifficultyIcon(recipe.difficulty)} {recipe.difficulty}
-                </Badge>
-              </div>
-
-              {/* Quick Nutrition Preview */}
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="text-center bg-white/60 rounded-lg p-2 border border-pink-200">
-                  <div className="text-sm font-bold text-slate-800">{recipe.nutrition.calories}</div>
-                  <div className="text-xs text-slate-600">cal</div>
-                </div>
-                <div className="text-center bg-white/60 rounded-lg p-2 border border-purple-200">
-                  <div className="text-sm font-bold text-slate-800">{recipe.nutrition.protein}</div>
-                  <div className="text-xs text-slate-600">protein</div>
-                </div>
-                <div className="text-center bg-white/60 rounded-lg p-2 border border-blue-200">
-                  <div className="text-sm font-bold text-slate-800">{recipe.nutrition.carbs}</div>
-                  <div className="text-xs text-slate-600">carbs</div>
-                </div>
-              </div>
-
-              {/* Tags */}
-              {recipe.tags.length > 0 && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  {recipe.tags.slice(0, 3).map((tag, tagIndex) => (
-                    <Badge key={tagIndex} variant="outline" className="text-xs">
-                      {tag}
-                    </Badge>
-                  ))}
-                  {recipe.tags.length > 3 && (
-                    <span className="text-xs text-slate-500">+{recipe.tags.length - 3} more</span>
-                  )}
-                </div>
-              )}
-
-              <div className="mt-4 text-center">
-                <div className="grid grid-cols-3 gap-2">
-                  <Button variant="outline" size="sm" className="w-full" onClick={(e) => { e.stopPropagation(); setSelectedRecipe(recipe); }}>
-                    View
-                  </Button>
+                {/* Quick rating + favorite row */}
+                <div className="flex items-center justify-between mb-3">
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <RatingStars
+                      value={(() => {
+                        const serverId = clientToServerIdMap[recipe.id] || recipe.id;
+                        return userRatings[serverId] || 0;
+                      })()}
+                      onChange={(next) => handleRatingChange(recipe, next)}
+                      size="sm"
+                    />
+                  </div>
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    className={`w-full ${savedIds.has(recipe.id) ? 'opacity-60 pointer-events-none' : ''}`}
                     onClick={async (e) => {
                       e.stopPropagation();
                       try {
-                        const saved = await saveRecipe(recipe);
-                        setSavedIds(prev => new Set(prev).add(recipe.id));
-                        alert('Recipe saved!');
+                        const { serverId } = await ensureRecipeHasDbId(recipe);
+                        if (favoriteIds.has(serverId)) {
+                          await removeFavorite(serverId);
+                          setFavoriteIds(prev => {
+                            const n = new Set(prev);
+                            n.delete(serverId);
+                            return n;
+                          });
+                          alert('Removed from favorites');
+                        } else {
+                          await addFavorite(serverId);
+                          setFavoriteIds(prev => new Set(prev).add(serverId));
+                          alert('Added to fav');
+                        }
                       } catch (err: any) {
-                        alert('Failed to save: ' + (err?.message || ''));
+                        alert('Failed to toggle favorite: ' + (err?.message || ''));
                       }
                     }}
+                    className="p-1 h-8 w-8"
                   >
-                    {savedIds.has(recipe.id) ? 'Saved' : 'Save'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      const id = recipe.id;
-                      try {
-                        await deleteRecipe(id);
-                        setList(prev => prev.filter(r => r.id !== id));
-                      } catch (err: any) {
-                        alert('Failed to delete: ' + (err?.message || ''));
-                      }
-                    }}
-                  >
-                    Delete
+                    <Heart 
+                      className={`w-4 h-4 ${(() => {
+                        const serverId = clientToServerIdMap[recipe.id] || recipe.id;
+                        return favoriteIds.has(serverId) ? 'text-red-500 fill-red-500' : 'text-slate-400';
+                      })()}`} 
+                    />
                   </Button>
                 </div>
-              </div>
+
+                {/* Recipe Meta */}
+                <div className="flex items-center gap-4 mb-4 flex-wrap">
+                  <div className="flex items-center gap-1 text-sm text-slate-600">
+                    <Clock className="w-4 h-4" />
+                    {recipe.time}
+                  </div>
+                  <div className="flex items-center gap-1 text-sm text-slate-600">
+                    <Users className="w-4 h-4" />
+                    {recipe.servings} servings
+                  </div>
+                  <Badge className="bg-slate-100 text-slate-800 border-slate-200">
+                    {recipe.difficulty}
+                  </Badge>
+                </div>
+
+                {/* Top tags */}
+                {recipe.tags.length > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap mb-4">
+                    {recipe.tags.slice(0, 3).map((tag, tagIndex) => (
+                      <Badge key={tagIndex} variant="outline" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                    {recipe.tags.length > 3 && (
+                      <span className="text-xs text-slate-500">+{recipe.tags.length - 3} more</span>
+                    )}
+                  </div>
+                )}
+
+                <div className="mt-4 text-center">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" size="sm" className="w-full" onClick={(e) => { e.stopPropagation(); setSelectedRecipe(recipe); }}>
+                      View
+                    </Button>
+                    
+                    {/* Save button - for generated recipes */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`w-full ${savedIds.has(recipe.id) ? 'opacity-60 pointer-events-none' : ''}`}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          const saved = await saveRecipe(recipe);
+                          setSavedIds(prev => new Set(prev).add(recipe.id));
+                          alert('Recipe saved!');
+                        } catch (err: any) {
+                          alert('Failed to save: ' + (err?.message || ''));
+                        }
+                      }}
+                    >
+                      {savedIds.has(recipe.id) ? 'Saved' : 'Save'}
+                    </Button>
+                  </div>
+                </div>
             </CardContent>
           </Card>
         ))}

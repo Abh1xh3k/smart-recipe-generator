@@ -112,7 +112,7 @@ export default function DietaryPreferences({ selectedPreferences, onPreferenceCh
         </p>
       </div>
 
-      {/* Enhanced Preferences Grid with more vibrant styling */}
+      {/* Preferences Grid - prevent scale overflow */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {DIETARY_PREFERENCES.map((preference) => {
           const selected = isSelected(preference.id);
@@ -120,7 +120,7 @@ export default function DietaryPreferences({ selectedPreferences, onPreferenceCh
             <Card
               key={preference.id}
               className={`
-                relative cursor-pointer transition-all duration-300 hover:scale-110 group
+                relative cursor-pointer transition-colors duration-300 group overflow-hidden
                 ${selected
                   ? 'border-emerald-400 bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 shadow-2xl shadow-emerald-200/50'
                   : 'border-slate-200 bg-white hover:border-emerald-300 hover:shadow-xl'
@@ -139,8 +139,7 @@ export default function DietaryPreferences({ selectedPreferences, onPreferenceCh
                 {/* Enhanced Content */}
                 <div className="flex items-start gap-4">
                   <div className={`
-                    text-4xl transform transition-all duration-300
-                    ${selected ? 'scale-110' : 'group-hover:scale-110'}
+                    text-4xl transition-colors duration-300
                   `}>
                     {preference.icon}
                   </div>

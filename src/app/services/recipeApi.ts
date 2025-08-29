@@ -80,3 +80,51 @@ export async function deleteAllRecipes(): Promise<void> {
 }
 
 
+// Ratings & Favorites helpers (server endpoints to be implemented)
+export async function rateRecipe(recipeId: string, rating: number): Promise<void> {
+  const res = await fetch('/api/ratings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipeId, rating })
+  })
+  if (!res.ok) throw new Error('Failed to rate recipe')
+}
+
+export async function getUserRating(recipeId: string): Promise<number | null> {
+  const res = await fetch(`/api/ratings?recipeId=${encodeURIComponent(recipeId)}`, { cache: 'no-store' })
+  if (!res.ok) return null
+  const data = await res.json()
+  return typeof data?.rating === 'number' ? data.rating : null
+}
+
+export async function addFavorite(recipeId: string): Promise<void> {
+  const res = await fetch('/api/favorites', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipeId })
+  })
+  if (!res.ok) throw new Error('Failed to save favorite')
+}
+
+export async function removeFavorite(recipeId: string): Promise<void> {
+  const res = await fetch(`/api/favorites?recipeId=${encodeURIComponent(recipeId)}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Failed to remove favorite')
+}
+
+export async function fetchFavorites(): Promise<string[]> {
+  const res = await fetch('/api/favorites', { cache: 'no-store' })
+  if (!res.ok) return []
+  const data = await res.json()
+  const list = Array.isArray(data?.recipeIds) ? data.recipeIds : []
+  return list
+}
+
+export async function fetchRecommendations(): Promise<Recipe[]> {
+  const res = await fetch('/api/recommendations', { cache: 'no-store' })
+  if (!res.ok) return []
+  const data = await res.json()
+  const list = Array.isArray(data?.recipes) ? data.recipes : []
+  return list.map(normalizeFromApi)
+}
+
+
