@@ -77,6 +77,40 @@ export default function RecipeDisplay({ recipes, onBack }: RecipeDisplayProps) {
   const [userRatings, setUserRatings] = useState<Record<string, number>>({});
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [clientToServerIdMap, setClientToServerIdMap] = useState<Record<string, string>>({});
+  const [isFilterVisible, setIsFilterVisible] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
+
+  // Handle scroll to show/hide filter
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      
+      // Show filter when scrolling up, hide when scrolling down
+      // Add a small threshold to prevent flickering
+      if (currentScrollY > lastScrollY + 15 && currentScrollY > 200) {
+        setIsFilterVisible(false);
+      } else if (currentScrollY < lastScrollY - 15) {
+        setIsFilterVisible(true);
+      }
+      
+      setLastScrollY(currentScrollY);
+    };
+
+    // Throttle scroll events for better performance
+    let ticking = false;
+    const throttledHandleScroll = () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          handleScroll();
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    window.addEventListener('scroll', throttledHandleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', throttledHandleScroll);
+  }, [lastScrollY]);
 
   const handleRatingChange = async (recipe: Recipe, rating: number) => {
     try {
@@ -431,8 +465,10 @@ export default function RecipeDisplay({ recipes, onBack }: RecipeDisplayProps) {
       </div>
 
       {/* Filters (sticky) */}
-      <Card className="border border-slate-200 shadow-sm bg-white lg:sticky lg:top-20 lg:z-30 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60">
-        <CardContent className="p-4">
+      <Card className={`border border-slate-200 shadow-sm bg-white lg:sticky lg:top-0 lg:z-40 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 transition-transform duration-300 ${
+        isFilterVisible ? 'translate-y-0' : '-translate-y-full'
+      }`}>
+        <CardContent className="p-6">
           <div className="flex items-center gap-3 mb-3 text-slate-700 font-semibold">
             <Filter className="w-4 h-4" /> Filters
           </div>

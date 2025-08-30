@@ -1,19 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import IngredientInput from './IngredientInput';
 import DietaryPreferences from './DietaryPreferences';
 import RecipeGenerationForm from './RecipeGenerationForm';
 import RecipeDisplay from './RecipeDisplay';
+import ImageIngredientRecognition from './ImageIngredientRecognition';
 import { Ingredient, DietaryPreference, Recipe, RecipeGenerationRequest } from '../types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, ChefHat, Sparkles, Target, Heart, Zap, Star, ArrowLeft } from 'lucide-react';
+import { Loader2, ChefHat, Sparkles, Target, Heart, Zap, Star, ArrowLeft, Camera } from 'lucide-react';
 import recipeGenerationService from '../services/recipeGenerationService';
 import { fetchSavedRecipes } from '../services/recipeApi';
 import RatingStars from './RatingStars';
 import PersonalizedRecommendations from './PersonalizedRecommendations';
+import { initializeGeminiImageRecognition, getGeminiStatus } from '../config/geminiConfig';
 
 export default function IngredientForm() {
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -23,6 +25,23 @@ export default function IngredientForm() {
   const [savedRecipes, setSavedRecipes] = useState<Recipe[] | null>(null);
   const [showRecipeForm, setShowRecipeForm] = useState(false);
   const [showRecipes, setShowRecipes] = useState(false);
+  const [showImageRecognition, setShowImageRecognition] = useState(false);
+  const [geminiStatus, setGeminiStatus] = useState<{
+    available: boolean;
+    status: string;
+    message: string;
+    icon: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const initialize = async () => {
+      await initializeGeminiImageRecognition();
+      const status = await getGeminiStatus();
+      setGeminiStatus(status);
+      console.log('Gemini status:', status);
+    };
+    initialize();
+  }, []);
 
   const handleAddIngredient = (ingredient: Ingredient) => {
     setIngredients(prev => [...prev, ingredient]);
@@ -30,6 +49,11 @@ export default function IngredientForm() {
 
   const handleRemoveIngredient = (id: string) => {
     setIngredients(prev => prev.filter(ing => ing.id !== id));
+  };
+
+  const handleIngredientsFromImage = (detectedIngredients: Ingredient[]) => {
+    setIngredients(prev => [...prev, ...detectedIngredients]);
+    setShowImageRecognition(false);
   };
 
   const handleDietaryPreferenceChange = (preference: DietaryPreference) => {
@@ -142,11 +166,59 @@ export default function IngredientForm() {
             </div>
           </CardHeader>
           <CardContent>
-            <IngredientInput 
-              onAddIngredient={handleAddIngredient}
-              onRemoveIngredient={handleRemoveIngredient}
-              ingredients={ingredients}
-            />
+            <div className="space-y-4">
+              {/* Image Recognition Button */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                      <Camera className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-slate-800">AI-Powered Recognition</h4>
+                      <p className="text-sm text-slate-600">Take a photo or upload an image to automatically detect ingredients</p>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => setShowImageRecognition(true)}
+                    variant="outline"
+                    className="border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-400"
+                  >
+                    <Camera className="w-4 h-4 mr-2" />
+                    Scan Ingredients
+                  </Button>
+                </div>
+
+                {/* Gemini Status Indicator */}
+                {geminiStatus && (
+                  <div className={`flex items-center gap-3 p-3 rounded-lg border ${
+                    geminiStatus.available 
+                      ? 'bg-green-50 border-green-200' 
+                      : 'bg-amber-50 border-amber-200'
+                  }`}>
+                    <span className="text-2xl">{geminiStatus.icon}</span>
+                    <div className="flex-1">
+                      <div className={`font-medium text-sm ${
+                        geminiStatus.available ? 'text-green-800' : 'text-amber-800'
+                      }`}>
+                        {geminiStatus.status}
+                      </div>
+                      <div className={`text-xs ${
+                        geminiStatus.available ? 'text-green-600' : 'text-amber-600'
+                      }`}>
+                        {geminiStatus.message}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <IngredientInput 
+                onAddIngredient={handleAddIngredient}
+                onRemoveIngredient={handleRemoveIngredient}
+                ingredients={ingredients}
+              />
+            </div>
           </CardContent>
         </Card>
 
@@ -252,6 +324,17 @@ export default function IngredientForm() {
           </Button>
         </div>
       </div>
+
+      {/* Image Recognition Modal */}
+      {showImageRecognition && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <ImageIngredientRecognition
+            onIngredientsDetected={handleIngredientsFromImage}
+            onClose={() => setShowImageRecognition(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }
+
