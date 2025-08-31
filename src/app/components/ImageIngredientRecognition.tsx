@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Camera, Upload, X, Loader2, CheckCircle, AlertCircle, Image as ImageIcon } from 'lucide-react';
 import { Ingredient } from '../types';
 import imageRecognitionService, { DetectedIngredient } from '../services/imageRecognitionService';
+import Image from 'next/image';
 
 interface ImageIngredientRecognitionProps {
   onIngredientsDetected: (ingredients: Ingredient[]) => void;
@@ -369,7 +370,7 @@ export default function ImageIngredientRecognition({ onIngredientsDetected, onCl
     } finally {
       setIsProcessing(false);
     }
-  }, [selectedImage]);
+  }, [selectedImage, detectedIngredients]);
 
   // Add detected ingredients to the main form
   const addDetectedIngredients = useCallback(() => {
@@ -592,92 +593,11 @@ export default function ImageIngredientRecognition({ onIngredientsDetected, onCl
           {isCameraOpen && (
             <div className="space-y-4 sm:space-y-6">
               <div className="relative bg-slate-100/60 backdrop-blur-sm rounded-xl overflow-hidden border border-slate-200/40 shadow-lg">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-48 sm:h-64 md:h-80 object-cover"
-                  style={{ transform: 'scaleX(-1)' }} // Mirror the video for better UX
-                  onLoadStart={() => console.log('🎬 Video load started')}
-                  onCanPlay={() => console.log('🎬 Video can play')}
-                  onLoadedData={() => console.log('🎬 Video data loaded')}
-                  onLoadedMetadata={() => console.log('🎬 Video metadata loaded')}
-                  onError={(e) => console.error('❌ Video error event:', e)}
-                  onPlay={() => console.log('🎬 Video started playing')}
-                  onPause={() => console.log('🎬 Video paused')}
-                  onStalled={() => console.log('🎬 Video stalled')}
-                  onSuspend={() => console.log('🎬 Video suspended')}
-                />
-                
-                {/* Loading overlay */}
-                {isProcessing && (
-                  <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center">
-                    <div className="text-center text-white bg-black/40 backdrop-blur-sm px-4 sm:px-6 py-3 sm:py-4 rounded-xl">
-                      <Loader2 className="w-6 h-6 sm:w-8 sm:h-8 mx-auto mb-2 sm:mb-3 animate-spin" />
-                      <p className="text-xs sm:text-sm font-medium">Initializing camera...</p>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Camera guide overlay */}
-                {!isProcessing && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="border-2 border-white/80 border-dashed rounded-xl w-32 h-24 sm:w-48 sm:h-32 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-                      <span className="text-white text-xs sm:text-sm font-medium text-center px-2">
-                        Aim at ingredients
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex gap-3 sm:gap-4">
-                <Button 
-                  onClick={capturePhoto} 
-                  className="flex-1 h-10 sm:h-12 text-sm sm:text-base font-medium"
-                  disabled={isProcessing}
-                >
-                  <Camera className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
-                  {isProcessing ? 'Initializing...' : 'Capture Photo'}
-                </Button>
-                <Button onClick={closeCamera} variant="outline" className="h-10 sm:h-12 px-3 sm:px-6 text-sm sm:text-base">
-                  Cancel
-                </Button>
-              </div>
-              
-              {/* Camera tips */}
-              <div className="text-xs text-slate-600 text-center p-3 sm:p-4 bg-slate-50/60 backdrop-blur-sm rounded-xl border border-slate-200/40">
-                💡 <strong>Tip:</strong> Hold your device steady and ensure good lighting for best results
-              </div>
-              
-              {/* Mobile camera help */}
-              <div className="text-xs text-slate-600 text-center p-3 sm:p-4 bg-blue-50/60 backdrop-blur-sm rounded-xl border border-blue-200/40">
-                📱 <strong>Mobile Users:</strong> If camera doesn't work, try refreshing the page or check browser settings for camera permissions. 
-                Make sure you're using HTTPS and have granted camera permissions.
-              </div>
-              
-              {/* Mobile troubleshooting */}
-              <div className="text-xs text-slate-600 text-center p-3 sm:p-4 bg-yellow-50/60 backdrop-blur-sm rounded-xl border border-yellow-200/40">
-                🔧 <strong>Troubleshooting:</strong> 
-                <ul className="mt-2 space-y-1 text-left">
-                  <li>• Ensure you're on HTTPS (required for camera access)</li>
-                  <li>• Grant camera permissions when prompted</li>
-                  <li>• Try refreshing the page if camera doesn't start</li>
-                  <li>• Check if camera is being used by another app</li>
-                  <li>• Try using a different browser if issues persist</li>
-                </ul>
-              </div>
-            </div>
-          )}
-
-                                   {/* Selected Image Display */}
-          {selectedImage && (
-            <div className="space-y-4 sm:space-y-6">
-              <div className="relative bg-slate-100/60 backdrop-blur-sm rounded-xl overflow-hidden border border-slate-200/40 shadow-lg">
-                <img
-                  src={selectedImage}
+                <Image
+                  src={selectedImage || ""}
                   alt="Selected ingredients"
+                  width={800}
+                  height={400}
                   className="w-full h-48 sm:h-64 object-cover"
                 />
                 <Button

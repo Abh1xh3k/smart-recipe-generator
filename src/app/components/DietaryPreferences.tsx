@@ -215,8 +215,8 @@ export default function DietaryPreferences({ selectedPreferences, onPreferenceCh
                 <span className="text-blue-600 text-base font-semibold">Smart filtering ensures perfect matches!</span>
                 <div className="flex gap-1">
                   <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-                  <div className="w-2 h-2 bg-indigo-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-                  <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                  <div className="w-2 h-2 bg-indigo-400 rounded-full animate-pulse" style={{ animationDelay: "0.2s" }}></div>
+                  <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" style={{ animationDelay: "0.4s" }}></div>
                 </div>
               </div>
             </div>

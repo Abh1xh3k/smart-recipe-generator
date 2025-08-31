@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { dbConnect, Favorite } from '@/lib/db'
+import { FavoriteDocument } from '@/app/types'
 
 function getUserId(req: NextRequest): string {
   return req.headers.get('x-user-id') || 'demo-user'
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest) {
   const userId = getUserId(req)
   try {
     const docs = await Favorite.find({ userId }).lean()
-    const ids = docs.map((d: any) => String(d.recipeId))
+    const ids = docs.map(d => String(d.recipeId))
     return NextResponse.json({ ok: true, recipeIds: ids })
   } catch {
     return NextResponse.json({ ok: false, error: 'READ_FAILED' }, { status: 500 })

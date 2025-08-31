@@ -58,3 +58,38 @@ export interface RecipeGenerationResponse {
   totalGenerated: number;
   generationTime: number;
 }
+
+export interface FavoriteDocument {
+  userId: string;
+  recipeId: string;
+  _id?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface RatingDocument {
+  userId: string;
+  recipeId: string;
+  rating: number;
+  _id?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface PreferenceProfile {
+  ingredients: Map<string, number>;
+  cuisines: Map<string, number>;
+  difficulties: Map<string, number>;
+  tags: Map<string, number>;
+  nutritionRanges: {
+    calories: { min: number; max: number; avg: number };
+    protein: { min: number; max: number; avg: number };
+    carbs: { min: number; max: number; avg: number };
+    fat: { min: number; max: number; avg: number };
+  };
+}
+
+export interface ScoredRecipe {
+  recipe: Recipe;
+  score: number;
+}

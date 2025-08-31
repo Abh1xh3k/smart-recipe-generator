@@ -8,8 +8,9 @@ const SEED_RECIPES = [
 export async function GET() {
   try {
     await dbConnect()
-  } catch (err: any) {
-    return NextResponse.json({ ok: false, error: 'DB_CONNECTION_FAILED', message: err.message }, { status: 500 })
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ ok: false, error: 'DB_CONNECTION_FAILED', message: errorMessage }, { status: 500 })
   }
 
   try {
@@ -24,16 +25,18 @@ export async function GET() {
   try {
     const recipes = await Recipe.find({}).sort({ createdAt: -1 }).lean()
     return NextResponse.json({ ok: true, count: recipes.length, recipes }, { status: 200 })
-  } catch (err: any) {
-    return NextResponse.json({ ok: false, error: 'FETCH_FAILED', message: err.message }, { status: 500 })
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ ok: false, error: 'FETCH_FAILED', message: errorMessage }, { status: 500 })
   }
 }
 
 export async function POST(request: Request) {
   try {
     await dbConnect()
-  } catch (err: any) {
-    return NextResponse.json({ ok: false, error: 'DB_CONNECTION_FAILED', message: err.message }, { status: 500 })
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ ok: false, error: 'DB_CONNECTION_FAILED', message: errorMessage }, { status: 500 })
   }
 
   try {
@@ -54,16 +57,18 @@ export async function POST(request: Request) {
     })
 
     return NextResponse.json({ ok: true, recipe: doc }, { status: 201 })
-  } catch (err: any) {
-    return NextResponse.json({ ok: false, error: 'CREATE_FAILED', message: err.message }, { status: 500 })
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ ok: false, error: 'CREATE_FAILED', message: errorMessage }, { status: 500 })
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
     await dbConnect()
-  } catch (err: any) {
-    return NextResponse.json({ ok: false, error: 'DB_CONNECTION_FAILED', message: err.message }, { status: 500 })
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ ok: false, error: 'DB_CONNECTION_FAILED', message: errorMessage }, { status: 500 })
   }
 
   const id = request.nextUrl.searchParams.get('id')
@@ -83,8 +88,9 @@ export async function DELETE(request: NextRequest) {
       }
       return NextResponse.json({ ok: true }, { status: 200 })
     }
-  } catch (err: any) {
-    return NextResponse.json({ ok: false, error: 'DELETE_FAILED', message: err.message }, { status: 500 })
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ ok: false, error: 'DELETE_FAILED', message: errorMessage }, { status: 500 })
   }
 }
 
