@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import dbConnect from '../../../../lib/mongodb'
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const Rating = require('../../../../models/Rating')
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const Recipe = require('../../../../models/Recipe')
+import { dbConnect, Rating, Recipe } from '@/lib/db'
 
 // TEMP auth: derive userId from header or fallback
 function getUserId(req: NextRequest): string {

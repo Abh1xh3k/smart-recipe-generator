@@ -57,6 +57,17 @@ export async function fetchSavedRecipes(): Promise<Recipe[]> {
   return list.map(normalizeFromApi)
 }
 
+export async function checkIfRecipeSaved(recipeId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/recipes/check?recipeId=${encodeURIComponent(recipeId)}`, { cache: 'no-store' })
+    if (!res.ok) return false
+    const data = await res.json()
+    return data?.isSaved === true
+  } catch {
+    return false
+  }
+}
+
 export async function saveRecipe(recipe: Recipe): Promise<Recipe> {
   const payload = denormalizeForApi(recipe)
   const res = await fetch('/api/recipes', {

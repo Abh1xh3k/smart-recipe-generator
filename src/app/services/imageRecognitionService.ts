@@ -1,5 +1,5 @@
 import { Ingredient } from '../types';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
 export interface DetectedIngredient {
   name: string;
@@ -28,37 +28,73 @@ export interface ImageRecognitionResponse {
 }
 
 class ImageRecognitionService {
-  private genAI: GoogleGenerativeAI | null = null;
-  private model: any = null;
+  private genAI: GoogleGenAI | null = null;
+  private model: string = '';
+
+  // Ingredient dictionary for vast categorization
+  private ingredientDictionary: Record<string, string> = {
+    // Vegetables
+    "tomato": "Vegetables", "onion": "Vegetables", "garlic": "Vegetables", "bell pepper": "Vegetables", "chili": "Vegetables", "chilli": "Vegetables", "green chili": "Vegetables", "red chili": "Vegetables", "ginger": "Vegetables", "carrot": "Vegetables", "potato": "Vegetables", "spinach": "Vegetables", "lettuce": "Vegetables", "broccoli": "Vegetables", "cauliflower": "Vegetables", "cabbage": "Vegetables", "eggplant": "Vegetables", "brinjal": "Vegetables", "okra": "Vegetables", "zucchini": "Vegetables", "pumpkin": "Vegetables", "cucumber": "Vegetables", "peas": "Vegetables", "corn": "Vegetables", "radish": "Vegetables", "beetroot": "Vegetables", "celery": "Vegetables", "asparagus": "Vegetables", "kale": "Vegetables", "fenugreek": "Vegetables", "drumstick": "Vegetables",
+
+    // Fruits
+    "apple": "Fruits", "banana": "Fruits", "orange": "Fruits", "lemon": "Fruits", "lime": "Fruits", "grape": "Fruits", "strawberry": "Fruits", "blueberry": "Fruits", "mango": "Fruits", "pineapple": "Fruits", "papaya": "Fruits", "watermelon": "Fruits", "muskmelon": "Fruits", "pomegranate": "Fruits", "guava": "Fruits", "pear": "Fruits", "peach": "Fruits", "plum": "Fruits", "apricot": "Fruits", "fig": "Fruits", "kiwi": "Fruits", "starfruit": "Fruits",
+
+    // Meat
+    "chicken": "Meat", "beef": "Meat", "pork": "Meat", "lamb": "Meat", "turkey": "Meat", "duck": "Meat", "goat": "Meat",
+
+    // Seafood
+    "salmon": "Seafood", "tuna": "Seafood", "shrimp": "Seafood", "prawn": "Seafood", "crab": "Seafood", "lobster": "Seafood", "cod": "Seafood", "tilapia": "Seafood", "mackerel": "Seafood", "anchovy": "Seafood",
+
+    // Dairy
+    "milk": "Dairy", "cheese": "Dairy", "yogurt": "Dairy", "butter": "Dairy", "cream": "Dairy", "paneer": "Dairy", "ghee": "Dairy",
+
+    // Grains
+    "rice": "Grains", "pasta": "Grains", "bread": "Grains", "flour": "Grains", "quinoa": "Grains", "wheat": "Grains", "oats": "Grains", "barley": "Grains", "millet": "Grains", "sorghum": "Grains",
+
+    // Herbs & Spices
+    "salt": "Herbs & Spices", "pepper": "Herbs & Spices", "oregano": "Herbs & Spices", "basil": "Herbs & Spices", "thyme": "Herbs & Spices", "rosemary": "Herbs & Spices", "coriander": "Herbs & Spices", "cilantro": "Herbs & Spices", "cumin": "Herbs & Spices", "turmeric": "Herbs & Spices", "chili powder": "Herbs & Spices", "paprika": "Herbs & Spices", "nutmeg": "Herbs & Spices", "clove": "Herbs & Spices", "cinnamon": "Herbs & Spices", "cardamom": "Herbs & Spices", "mustard seeds": "Herbs & Spices", "fenugreek seeds": "Herbs & Spices"
+  };
 
   // Initialize with Gemini API key
   initialize(apiKey: string) {
+    console.log('🔧 Initializing Gemini service...');
+    console.log('🔑 API Key provided:', apiKey ? 'Yes (length: ' + apiKey.length + ')' : 'No');
+    
     try {
-      this.genAI = new GoogleGenerativeAI(apiKey);
-      this.model = this.genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      console.log('Gemini image recognition service initialized successfully');
+      this.genAI = new GoogleGenAI({ apiKey });
+      this.model = 'gemini-2.5-flash';
+      console.log('✅ Gemini image recognition service initialized successfully');
+      console.log('🤖 Model:', this.model);
     } catch (error) {
-      console.error('Failed to initialize Gemini service:', error);
+      console.error('❌ Failed to initialize Gemini service:', error);
       throw new Error('Failed to initialize Gemini image recognition service');
     }
   }
 
-  // Process image with Gemini Vision
   async recognizeIngredients(request: ImageRecognitionRequest): Promise<ImageRecognitionResponse> {
+    console.log('🔍 Starting image recognition process...');
+    console.log('📊 Request details:', { 
+      hasModel: !!this.model, 
+      imageDataLength: request.imageData?.length || 0,
+      maxResults: request.maxResults 
+    });
+
     if (!this.model) {
-      throw new Error('Gemini service not initialized. Please provide API key.');
+      console.warn('⚠️ Gemini service not initialized - falling back to simulation');
+      return this.simulateRecognition(request);
     }
 
     const startTime = Date.now();
 
     try {
-      // Convert base64 to Uint8Array for Gemini
-      const imageData = this.base64ToUint8Array(request.imageData);
-      
-      // Create the prompt for ingredient detection
-      const prompt = `Analyze this image and identify all food ingredients visible. 
+      console.log('🔄 Processing image data...');
+      // Extract the base64 data without the data URL prefix
+      const base64Data = request.imageData.includes(',') ? request.imageData.split(',')[1] : request.imageData;
+      console.log('✅ Base64 data extracted, length:', base64Data.length);
 
-Please return ONLY a valid JSON array of ingredients with this exact structure (no extra text, no markdown):
+      const prompt = `Analyze this image and identify ALL food ingredients visible, whether common or uncommon.
+
+Return ONLY a valid JSON array of ingredients with this exact structure (no extra text, no markdown):
 
 [
   {
@@ -70,50 +106,100 @@ Please return ONLY a valid JSON array of ingredients with this exact structure (
   }
 ]
 
-Focus on:
-- Common cooking ingredients (vegetables, fruits, meat, dairy, grains, herbs, spices)
-- Be specific with names (e.g., "Bell Pepper" not just "Pepper")
-- Estimate quantities if visible (e.g., "2", "1/2", "small")
-- Use appropriate units (e.g., "piece", "cup", "tbsp", "clove")
-- Assign confidence scores based on clarity (0.7-1.0 for clear items, 0.5-0.7 for unclear)
-- Categorize ingredients appropriately
+⚠️ Be precise and specific:
+- Distinguish between visually similar items (e.g., Chili vs Tomato vs Bell Pepper).
+- Use exact names even if uncommon (e.g., Okra, Starfruit, Kale, Fenugreek leaves).
+- Estimate quantities if visible.
+- Assign confidence scores.`;
 
-Return ONLY the JSON array, no explanations or additional text.`;
+             console.log('🤖 Sending request to Gemini AI...');
+       console.log('📸 Base64 data type:', typeof base64Data);
+       console.log('📸 Base64 data length:', base64Data.length);
+       
+       let text: string = '';
+       try {
+         const contents = [
+           {
+             role: 'user',
+             parts: [
+               {
+                 inlineData: {
+                   data: base64Data,
+                   mimeType: 'image/jpeg',
+                 },
+               },
+               {
+                 text: prompt,
+               },
+             ],
+           },
+         ];
 
-      // Generate content with image
-      const result = await this.model.generateContent([prompt, imageData]);
-      const response = await result.response;
-      const text = response.text();
+        const config = {
+          responseModalities: ['TEXT'],
+        };
 
-      // Parse the response
+                 console.log('🤖 Sending request to Gemini AI...');
+         const response = await this.genAI!.models.generateContentStream({
+           model: this.model,
+           config,
+           contents,
+         });
+
+        // Collect the response text
+        for await (const chunk of response) {
+          if (chunk.candidates?.[0]?.content?.parts?.[0]?.text) {
+            text += chunk.candidates[0].content.parts[0].text;
+          }
+        }
+        
+        console.log('📝 Raw Gemini response:', text);
+      } catch (apiError: any) {
+        console.error('❌ Gemini API error:', apiError);
+        console.error('❌ Error details:', {
+          name: apiError?.name,
+          message: apiError?.message,
+          status: apiError?.status,
+          statusText: apiError?.statusText
+        });
+        throw apiError;
+      }
+
       const ingredients = this.parseGeminiResponse(text);
+      console.log('🍅 Parsed ingredients:', ingredients);
       
       const processingTime = Date.now() - startTime;
-      
+
       return {
-        ingredients: ingredients.slice(0, request.maxResults || 20),
+        ingredients: ingredients.slice(0, request.maxResults || 50),
         processingTime,
-        modelVersion: 'gemini-1.5-flash'
+        modelVersion: 'gemini-2.5-flash-image-preview'
       };
     } catch (error) {
-      console.error('Gemini image recognition failed:', error);
-      throw new Error('Failed to process image with Gemini. Please try again.');
+      console.error('❌ Gemini image recognition failed:', error);
+      console.log('🔄 Falling back to simulation due to Gemini error...');
+      return this.simulateRecognition(request);
     }
   }
 
-  // Parse Gemini's JSON response
   private parseGeminiResponse(text: string): DetectedIngredient[] {
+    console.log('🔍 Parsing Gemini response...');
+    console.log('📝 Response text length:', text.length);
+    console.log('📝 Response preview:', text.substring(0, 200) + '...');
+    
     try {
-      // Clean the response text to extract JSON
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) {
+        console.warn('⚠️ No valid JSON array found in response');
+        console.log('🔍 Full response text:', text);
         throw new Error('No valid JSON array found in response');
       }
 
+      console.log('✅ Found JSON match:', jsonMatch[0]);
       const ingredients = JSON.parse(jsonMatch[0]);
-      
-      // Validate and clean the ingredients
-      return ingredients
+      console.log('📊 Parsed JSON ingredients:', ingredients);
+
+      const filteredIngredients = ingredients
         .filter((ing: any) => ing.name && typeof ing.name === 'string')
         .map((ing: any) => ({
           name: ing.name.trim(),
@@ -123,99 +209,52 @@ Return ONLY the JSON array, no explanations or additional text.`;
           unit: ing.unit || 'piece'
         }))
         .sort((a: DetectedIngredient, b: DetectedIngredient) => b.confidence - a.confidence);
-    } catch (error) {
-      console.error('Failed to parse Gemini response:', error);
-      console.log('Raw response:', text);
       
-      // Fallback to basic ingredient detection
+      console.log('🎯 Final processed ingredients:', filteredIngredients);
+      return filteredIngredients;
+    } catch (error) {
+      console.error('❌ Failed to parse Gemini response:', error);
+      console.log('📝 Raw response:', text);
+      console.log('🔄 Using fallback detection...');
       return this.fallbackIngredientDetection();
     }
   }
 
-  // Fallback ingredient detection when Gemini parsing fails
   private fallbackIngredientDetection(): DetectedIngredient[] {
-    return [
-      { name: 'Tomato', confidence: 0.85, category: 'Vegetables', quantity: '1', unit: 'piece' },
-      { name: 'Onion', confidence: 0.80, category: 'Vegetables', quantity: '1', unit: 'piece' },
-      { name: 'Garlic', confidence: 0.75, category: 'Vegetables', quantity: '2', unit: 'cloves' }
-    ];
+    console.log('🔄 Using fallback ingredient detection...');
+    // Return empty array instead of hardcoded ingredients
+    // This ensures we only show ingredients that were actually detected
+    console.log('⚠️ No ingredients detected - returning empty array');
+    return [];
   }
 
-  // Convert base64 to Uint8Array for Gemini
-  private base64ToUint8Array(base64String: string): Uint8Array {
-    try {
-      // Remove data URL prefix if present
-      const base64 = base64String.includes(',') ? base64String.split(',')[1] : base64String;
-      
-      // Convert base64 to binary string
-      const binaryString = atob(base64);
-      
-      // Convert binary string to Uint8Array
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      
-      return bytes;
-    } catch (error) {
-      console.error('Failed to convert base64 to Uint8Array:', error);
-      throw new Error('Invalid image format');
-    }
-  }
 
-  // Categorize ingredient into food groups (fallback method)
+
   private categorizeIngredient(name: string): string {
     const lowerName = name.toLowerCase();
-    
-    if (['tomato', 'onion', 'garlic', 'bell pepper', 'mushroom', 'carrot', 'potato', 'lettuce', 'spinach'].some(veg => lowerName.includes(veg))) {
-      return 'Vegetables';
+    for (const key in this.ingredientDictionary) {
+      if (lowerName.includes(key)) {
+        return this.ingredientDictionary[key];
+      }
     }
-    
-    if (['apple', 'banana', 'orange', 'lemon', 'lime', 'grape', 'strawberry', 'blueberry'].some(fruit => lowerName.includes(fruit))) {
-      return 'Fruits';
-    }
-    
-    if (['chicken', 'beef', 'pork', 'lamb', 'turkey'].some(meat => lowerName.includes(meat))) {
-      return 'Meat';
-    }
-    
-    if (['salmon', 'tuna', 'shrimp', 'cod', 'tilapia'].some(fish => lowerName.includes(fish))) {
-      return 'Seafood';
-    }
-    
-    if (['milk', 'cheese', 'yogurt', 'butter', 'cream'].some(dairy => lowerName.includes(dairy))) {
-      return 'Dairy';
-    }
-    
-    if (['rice', 'pasta', 'bread', 'flour', 'quinoa'].some(grain => lowerName.includes(grain))) {
-      return 'Grains';
-    }
-    
-    if (['salt', 'pepper', 'oregano', 'basil', 'thyme', 'rosemary'].some(herb => lowerName.includes(herb))) {
-      return 'Herbs & Spices';
-    }
-    
     return 'Other';
   }
 
-  // Fallback to simulated recognition for development/testing
   async simulateRecognition(request: ImageRecognitionRequest): Promise<ImageRecognitionResponse> {
+    console.log('🎭 Running simulation mode...');
     const startTime = Date.now();
-    
-    // Simulate processing time
     await new Promise(resolve => setTimeout(resolve, 2000));
     
-    // Simulated detected ingredients based on common food items
+    // For debugging purposes, return some test ingredients
+    // In production, this would be replaced with actual AI recognition
     const simulatedIngredients: DetectedIngredient[] = [
-      { name: 'Tomato', confidence: 0.95, category: 'Vegetables', quantity: '2', unit: 'pieces' },
-      { name: 'Onion', confidence: 0.87, category: 'Vegetables', quantity: '1', unit: 'piece' },
-      { name: 'Garlic', confidence: 0.82, category: 'Vegetables', quantity: '3', unit: 'cloves' },
-      { name: 'Bell Pepper', confidence: 0.78, category: 'Vegetables', quantity: '1', unit: 'piece' },
-      { name: 'Mushroom', confidence: 0.73, category: 'Vegetables', quantity: '8', unit: 'pieces' }
+      { name: 'Test Tomato', confidence: 0.95, category: 'Vegetables', quantity: '1', unit: 'piece' },
+      { name: 'Test Onion', confidence: 0.87, category: 'Vegetables', quantity: '1', unit: 'piece' }
     ];
 
     const processingTime = Date.now() - startTime;
-    
+    console.log('🎭 Simulation completed with ingredients:', simulatedIngredients);
+
     return {
       ingredients: simulatedIngredients,
       processingTime,
@@ -223,12 +262,12 @@ Return ONLY the JSON array, no explanations or additional text.`;
     };
   }
 
-  // Check if Gemini service is available
   isGeminiAvailable(): boolean {
-    return this.model !== null;
+    const available = this.genAI !== null && this.model !== '';
+    console.log('🔍 Checking Gemini availability:', available ? 'Available' : 'Not available');
+    return available;
   }
 }
 
-// Export singleton instance
 const imageRecognitionService = new ImageRecognitionService();
 export default imageRecognitionService;

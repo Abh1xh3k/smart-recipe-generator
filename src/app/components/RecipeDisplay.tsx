@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Clock, Users, ChefHat, Utensils, Heart, Star, Share2, Bookmark, Printer, Filter, Plus, Minus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { saveRecipe, deleteRecipe, deleteAllRecipes, rateRecipe, addFavorite, removeFavorite, fetchFavorites } from '../services/recipeApi';
+import { saveRecipe, deleteRecipe, deleteAllRecipes, rateRecipe, addFavorite, removeFavorite, fetchFavorites, checkIfRecipeSaved, fetchSavedRecipes } from '../services/recipeApi';
 import RatingStars from './RatingStars';
 
 interface RecipeDisplayProps {
@@ -138,15 +138,108 @@ export default function RecipeDisplay({ recipes, onBack }: RecipeDisplayProps) {
     return { serverId, updated: { ...recipe, id: serverId } };
   };
 
-  // Load favorites on mount to reflect heart state
+  // Toggle save/unsave recipe
+  const toggleSaveRecipe = async (recipe: Recipe) => {
+    try {
+      const isCurrentlySaved = savedIds.has(recipe.id);
+      
+      if (isCurrentlySaved) {
+        // Unsave recipe - check if it's already a valid MongoDB ID first
+        let serverId = recipe.id;
+        
+        // If it's not a valid MongoDB ID, we need to find the actual saved recipe
+        if (!isMongoId(recipe.id)) {
+          // Try to find the recipe by name and other properties to get the real ID
+          try {
+            const savedRecipes = await fetchSavedRecipes();
+            const matchingRecipe = savedRecipes.find(saved => 
+              saved.name === recipe.name && 
+              saved.ingredients.length === recipe.ingredients.length
+            );
+            if (matchingRecipe) {
+              serverId = matchingRecipe.id;
+            } else {
+              // If no matching recipe found, just remove from UI state
+              setSavedIds(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(recipe.id);
+                return newSet;
+              });
+              alert('Recipe removed from saved recipes');
+              return;
+            }
+          } catch (error) {
+            console.error('Error finding saved recipe:', error);
+            // If we can't find it, just remove from UI state
+            setSavedIds(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(recipe.id);
+              return newSet;
+            });
+            alert('Recipe removed from saved recipes');
+            return;
+          }
+        }
+        
+        // Now delete the recipe with the correct server ID
+        await deleteRecipe(serverId);
+        setSavedIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(recipe.id);
+          return newSet;
+        });
+        alert('Recipe removed from saved recipes');
+      } else {
+        // Save recipe
+        const saved = await saveRecipe(recipe);
+        setSavedIds(prev => new Set(prev).add(recipe.id));
+        alert('Recipe saved successfully!');
+      }
+    } catch (err: any) {
+      alert(`Failed to ${savedIds.has(recipe.id) ? 'unsave' : 'save'} recipe: ${err?.message || 'Unknown error'}`);
+    }
+  };
+
+  // Refresh saved status for a specific recipe
+  const refreshSavedStatus = async (recipeId: string) => {
+    try {
+      const isSaved = await checkIfRecipeSaved(recipeId);
+      setSavedIds(prev => {
+        const newSet = new Set(prev);
+        if (isSaved) {
+          newSet.add(recipeId);
+        } else {
+          newSet.delete(recipeId);
+        }
+        return newSet;
+      });
+    } catch (error) {
+      console.error('Failed to refresh saved status:', error);
+    }
+  };
+
+  // Load favorites and check saved status on mount
   useEffect(() => {
     (async () => {
       try {
-        const ids = await fetchFavorites();
-        setFavoriteIds(new Set(ids));
+        const [favorites, savedStatuses] = await Promise.all([
+          fetchFavorites(),
+          Promise.all(list.map(recipe => checkIfRecipeSaved(recipe.id)))
+        ]);
+        
+        setFavoriteIds(new Set(favorites));
+        
+        // Update savedIds based on database check
+        const savedIdsSet = new Set<string>();
+        list.forEach((recipe, index) => {
+          if (savedStatuses[index]) {
+            savedIdsSet.add(recipe.id);
+          }
+        });
+        setSavedIds(savedIdsSet);
       } catch {}
     })();
-  }, []);
+  }, []); // Only run on mount to avoid infinite loops
 
   // Filters
   const [selectedDifficulty, setSelectedDifficulty] = useState<'All' | 'Easy' | 'Medium' | 'Hard'>('All');
@@ -230,22 +323,13 @@ export default function RecipeDisplay({ recipes, onBack }: RecipeDisplayProps) {
 
           <div className="flex gap-2">
             <Button
-              variant="outline"
+              variant={savedIds.has(selectedRecipe.id) ? "default" : "outline"}
               size="sm"
-              onClick={async () => {
-                if (!selectedRecipe) return;
-                try {
-                  const saved = await saveRecipe(selectedRecipe);
-                  setSavedIds(prev => new Set(prev).add(selectedRecipe.id));
-                  alert('Recipe saved!');
-                } catch (e: any) {
-                  alert('Failed to save recipe: ' + (e?.message || ''));
-                }
-              }}
-              className={`${savedIds.has(selectedRecipe.id) ? 'opacity-60 pointer-events-none' : ''}`}
+              onClick={() => toggleSaveRecipe(selectedRecipe)}
+              className={`${savedIds.has(selectedRecipe.id) ? 'bg-slate-900 text-white hover:bg-slate-800' : ''}`}
             >
               <Bookmark className="w-4 h-4 mr-2" />
-              Save
+              {savedIds.has(selectedRecipe.id) ? 'Unsave' : 'Save'}
             </Button>
             <Button
               variant="outline"
@@ -647,21 +731,15 @@ export default function RecipeDisplay({ recipes, onBack }: RecipeDisplayProps) {
                     
                     {/* Save button - for generated recipes */}
                     <Button
-                      variant="outline"
+                      variant={savedIds.has(recipe.id) ? "default" : "outline"}
                       size="sm"
-                      className={`w-full ${savedIds.has(recipe.id) ? 'opacity-60 pointer-events-none' : ''}`}
-                      onClick={async (e) => {
+                      className={`w-full ${savedIds.has(recipe.id) ? 'bg-slate-900 text-white hover:bg-slate-800' : ''}`}
+                      onClick={(e) => {
                         e.stopPropagation();
-                        try {
-                          const saved = await saveRecipe(recipe);
-                          setSavedIds(prev => new Set(prev).add(recipe.id));
-                          alert('Recipe saved!');
-                        } catch (err: any) {
-                          alert('Failed to save: ' + (err?.message || ''));
-                        }
+                        toggleSaveRecipe(recipe);
                       }}
                     >
-                      {savedIds.has(recipe.id) ? 'Saved' : 'Save'}
+                      {savedIds.has(recipe.id) ? 'Unsave' : 'Save'}
                     </Button>
                   </div>
                 </div>

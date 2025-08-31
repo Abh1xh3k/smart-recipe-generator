@@ -2,7 +2,8 @@ import imageRecognitionService from '../services/imageRecognitionService';
 
 // Initialize Gemini for image recognition
 export function initializeGeminiImageRecognition() {
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  // Use hardcoded API key for now
+  const apiKey = "AIzaSyAb2K0HUEY2b7lqcwE6qUrcxByxUN3D6ds";
   
   if (!apiKey) {
     console.warn('Gemini API key not found. Image recognition will use simulation mode.');

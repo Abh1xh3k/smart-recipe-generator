@@ -19,10 +19,10 @@ export default function GeneratePage() {
           </div>
           <nav className="flex items-center gap-2">
             <Link href="/">
-              <Button variant="outline" className="h-9">Home</Button>
+              <Button variant="outline" className="h-9 px-4 text-sm font-medium">Home</Button>
             </Link>
             <Link href="/saved">
-              <Button variant="outline" className="h-9">Saved</Button>
+              <Button variant="outline" className="h-9 px-4 text-sm font-medium">Saved</Button>
             </Link>
           </nav>
         </div>

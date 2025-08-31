@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import dbConnect from '../../../../lib/mongodb'
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const Favorite = require('../../../../models/Favorite')
+import { dbConnect, Favorite } from '@/lib/db'
 
 function getUserId(req: NextRequest): string {
   return req.headers.get('x-user-id') || 'demo-user'

@@ -29,14 +29,14 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <nav className="flex items-center space-x-8 text-base font-medium py-6 mb-4">
-          <Link href="/" className="transition-colors hover:text-foreground/80 text-lg">
+        <nav className="flex items-center justify-center space-x-4 text-base font-medium py-3 mb-6 bg-white/90 backdrop-blur-md border-b border-slate-200/60 shadow-sm">
+          <Link href="/" className="px-3 py-2 rounded-md transition-all duration-200 hover:bg-slate-100 hover:text-slate-900 text-slate-600 font-medium text-sm">
             Home
           </Link>
-          <Link href="/generate" className="transition-colors hover:text-foreground/80 text-lg">
+          <Link href="/generate" className="px-3 py-2 rounded-md transition-all duration-200 hover:bg-slate-100 hover:text-slate-900 text-slate-600 font-medium text-sm">
             Generate
           </Link>
-          <Link href="/saved" className="transition-colors hover:text-foreground/80 text-lg">
+          <Link href="/saved" className="px-3 py-2 rounded-md transition-all duration-200 hover:bg-slate-100 hover:text-slate-900 text-slate-600 font-medium text-sm">
             Saved Recipes
           </Link>
         </nav>

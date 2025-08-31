@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,27 +13,62 @@ interface ImageIngredientRecognitionProps {
   onClose: () => void;
 }
 
-interface DetectedIngredient {
-  name: string;
-  confidence: number;
-  boundingBox?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-}
-
 export default function ImageIngredientRecognition({ onIngredientsDetected, onClose }: ImageIngredientRecognitionProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [detectedIngredients, setDetectedIngredients] = useState<DetectedIngredient[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Check camera permissions
+  const checkCameraPermission = useCallback(async () => {
+    try {
+      console.log('🔍 Checking camera permissions...');
+      
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.log('❌ MediaDevices not supported');
+        setHasCameraPermission(false);
+        return false;
+      }
+      
+      // Check if we already have permission
+      if (navigator.permissions) {
+        try {
+          const permissions = await navigator.permissions.query({ name: 'camera' as PermissionName });
+          console.log('📱 Camera permission state:', permissions.state);
+          setHasCameraPermission(permissions.state === 'granted');
+          return permissions.state === 'granted';
+        } catch (permErr) {
+          console.log('⚠️ Permissions API error, trying direct access:', permErr);
+        }
+      }
+      
+      // If permissions API not available or failed, try to get user media directly
+      console.log('🎥 Attempting to access camera...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 }
+        } 
+      });
+      
+      console.log('✅ Camera access granted');
+      stream.getTracks().forEach(track => track.stop());
+      setHasCameraPermission(true);
+      return true;
+    } catch (err: any) {
+      console.error('❌ Camera permission check failed:', err);
+      setHasCameraPermission(false);
+      return false;
+    }
+  }, []);
 
   // Handle file upload
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -54,79 +89,231 @@ export default function ImageIngredientRecognition({ onIngredientsDetected, onCl
     }
   }, []);
 
+  // Handle drag and drop
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Only set drag over to false if we're leaving the entire drop zone
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    
+    const files = Array.from(e.dataTransfer.files);
+    const imageFile = files.find(file => file.type.startsWith('image/'));
+    
+    if (imageFile) {
+      if (imageFile.size > 10 * 1024 * 1024) { // 10MB limit
+        setError('Image size must be less than 10MB');
+        return;
+      }
+      
+      // Show loading state
+      setIsProcessing(true);
+      
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setSelectedImage(e.target?.result as string);
+        setError(null);
+        setDetectedIngredients([]);
+        setIsProcessing(false);
+      };
+      reader.onerror = () => {
+        setError('Failed to read image file. Please try again.');
+        setIsProcessing(false);
+      };
+      reader.readAsDataURL(imageFile);
+    } else {
+      setError('Please drop an image file (JPG, PNG, WebP)');
+    }
+  }, []);
+
   // Open camera
   const openCamera = useCallback(async () => {
     try {
+      console.log('📸 Opening camera...');
+      setIsProcessing(true);
+      setError(null);
+      
+      // Check if camera is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Camera is not supported on this device');
+      }
+
+      console.log('🎥 Requesting camera access...');
+      // Request camera permissions with better constraints
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        } 
+          facingMode: 'environment', // Use back camera on mobile
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 }
+        },
+        audio: false
       });
+      
+      console.log('✅ Camera stream obtained:', stream);
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
         setIsCameraOpen(true);
         setError(null);
+        
+        // Wait for video to be ready
+        videoRef.current.onloadedmetadata = () => {
+          console.log('🎬 Video metadata loaded, camera ready');
+          setIsProcessing(false);
+        };
+        
+        // Add error handling for video
+        videoRef.current.onerror = (e) => {
+          console.error('❌ Video error:', e);
+          setError('Failed to load camera video. Please try again.');
+          setIsProcessing(false);
+        };
+      } else {
+        console.error('❌ Video ref not available');
+        throw new Error('Video element not found');
       }
-    } catch (err) {
-      setError('Unable to access camera. Please check permissions.');
+    } catch (err: any) {
+      console.error('❌ Camera error:', err);
+      setIsProcessing(false);
+      
+      // Provide specific error messages for different scenarios
+      if (err.name === 'NotAllowedError') {
+        setError('Camera permission denied. Please allow camera access in your browser settings and try again.');
+      } else if (err.name === 'NotFoundError') {
+        setError('No camera found on this device.');
+      } else if (err.name === 'NotSupportedError') {
+        setError('Camera is not supported on this device or browser.');
+      } else if (err.name === 'NotReadableError') {
+        setError('Camera is already in use by another application.');
+      } else {
+        setError(`Unable to access camera: ${err.message || 'Unknown error'}`);
+      }
     }
   }, []);
 
   // Close camera
   const closeCamera = useCallback(() => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+      });
       streamRef.current = null;
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     setIsCameraOpen(false);
+    setIsProcessing(false);
   }, []);
 
   // Capture photo from camera
   const capturePhoto = useCallback(() => {
+    console.log('📸 Capturing photo...');
+    
     if (videoRef.current && canvasRef.current) {
-      const context = canvasRef.current.getContext('2d');
-      if (context) {
-        canvasRef.current.width = videoRef.current.videoWidth;
-        canvasRef.current.height = videoRef.current.videoHeight;
-        context.drawImage(videoRef.current, 0, 0);
-        
-        const imageData = canvasRef.current.toDataURL('image/jpeg', 0.8);
-        setSelectedImage(imageData);
-        closeCamera();
-        setDetectedIngredients([]);
+      try {
+        const context = canvasRef.current.getContext('2d');
+        if (context) {
+          // Get video dimensions
+          const videoWidth = videoRef.current.videoWidth;
+          const videoHeight = videoRef.current.videoHeight;
+          
+          console.log('📏 Video dimensions:', videoWidth, 'x', videoHeight);
+          
+          if (videoWidth === 0 || videoHeight === 0) {
+            console.log('⚠️ Camera not ready, dimensions are 0');
+            setError('Camera not ready. Please wait a moment and try again.');
+            return;
+          }
+          
+          // Set canvas dimensions to match video
+          canvasRef.current.width = videoWidth;
+          canvasRef.current.height = videoHeight;
+          
+          console.log('🎨 Canvas dimensions set:', canvasRef.current.width, 'x', canvasRef.current.height);
+          
+          // Draw video frame to canvas
+          context.drawImage(videoRef.current, 0, 0, videoWidth, videoHeight);
+          
+          // Convert to base64 image
+          const imageData = canvasRef.current.toDataURL('image/jpeg', 0.8);
+          console.log('🖼️ Photo captured, image data length:', imageData.length);
+          
+          setSelectedImage(imageData);
+          closeCamera();
+          setDetectedIngredients([]);
+          setError(null);
+        } else {
+          console.error('❌ Failed to get canvas context');
+          setError('Failed to capture photo. Please try again.');
+        }
+      } catch (err) {
+        console.error('❌ Photo capture error:', err);
+        setError('Failed to capture photo. Please try again.');
       }
+    } else {
+      console.error('❌ Video or canvas ref not available');
+      setError('Camera not available. Please try again.');
     }
   }, [closeCamera]);
+
+  // Check camera permissions on mount
+  useEffect(() => {
+    console.log('🚀 Component mounted, checking camera permissions...');
+    checkCameraPermission();
+  }, [checkCameraPermission]);
 
   // Process image with AI recognition
   const processImage = useCallback(async () => {
     if (!selectedImage) return;
 
+    console.log('🖼️ Starting image processing...');
+    console.log('📸 Selected image length:', selectedImage.length);
+    
     setIsProcessing(true);
     setError(null);
 
     try {
-      // Try to use Gemini first, fallback to simulation if not available
-      if (imageRecognitionService.isGeminiAvailable()) {
+      console.log('🔍 Checking Gemini availability...');
+      const isGeminiAvailable = imageRecognitionService.isGeminiAvailable();
+      console.log('🤖 Gemini available:', isGeminiAvailable);
+      
+      if (isGeminiAvailable) {
+        console.log('🚀 Using Gemini AI for recognition...');
         const response = await imageRecognitionService.recognizeIngredients({
           imageData: selectedImage,
           maxResults: 10
         });
+        console.log('✅ Gemini response received:', response);
         setDetectedIngredients(response.ingredients);
       } else {
-        // Fallback to simulation if Gemini is not initialized
+        console.log('🎭 Gemini not available, using simulation...');
         const response = await imageRecognitionService.simulateRecognition({
           imageData: selectedImage,
           maxResults: 10
         });
+        console.log('✅ Simulation response received:', response);
         setDetectedIngredients(response.ingredients);
       }
+      
+      console.log('🍅 Final detected ingredients:', detectedIngredients);
     } catch (err) {
-      console.error('Image recognition failed:', err);
+      console.error('❌ Image recognition failed:', err);
       setError('Failed to process image. Please try again.');
     } finally {
       setIsProcessing(false);
@@ -160,7 +347,14 @@ export default function ImageIngredientRecognition({ onIngredientsDetected, onCl
   }, []);
 
   return (
-    <Card className="w-full max-w-2xl mx-auto">
+    <Card 
+      className={`w-full max-w-2xl mx-auto transition-all duration-200 ${
+        isDragOver ? 'ring-2 ring-blue-500 ring-opacity-50 scale-[1.02]' : ''
+      }`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
@@ -179,28 +373,115 @@ export default function ImageIngredientRecognition({ onIngredientsDetected, onCl
       </CardHeader>
 
       <CardContent className="space-y-6">
+        {/* Drag and Drop Instructions */}
+        {!selectedImage && !isCameraOpen && (
+          <div className="text-center p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <Upload className="w-5 h-5 text-blue-600" />
+              <span className="font-medium text-blue-800">Quick Upload</span>
+            </div>
+            <p className="text-sm text-blue-700">
+              Drag and drop your ingredient images anywhere in this area, or use the buttons below
+            </p>
+          </div>
+        )}
+        
         {/* Image Input Methods */}
         {!selectedImage && !isCameraOpen && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Button
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`h-32 flex flex-col items-center justify-center gap-3 border-2 border-dashed transition-all duration-200 cursor-pointer rounded-lg ${
+                isDragOver
+                  ? 'border-blue-500 bg-blue-50 scale-105'
+                  : 'border-slate-300 hover:border-blue-400 hover:bg-blue-50'
+              }`}
               onClick={() => fileInputRef.current?.click()}
-              variant="outline"
-              className="h-32 flex flex-col items-center justify-center gap-3 border-2 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50"
             >
-              <Upload className="w-8 h-8 text-slate-400" />
-              <span className="text-slate-600">Upload Image</span>
-              <span className="text-xs text-slate-500">JPG, PNG up to 10MB</span>
-            </Button>
+              <Upload className={`w-8 h-8 transition-colors duration-200 ${
+                isDragOver ? 'text-blue-500' : 'text-slate-400'
+              }`} />
+              <span className={`font-medium transition-colors duration-200 ${
+                isDragOver ? 'text-blue-600' : 'text-slate-600'
+              }`}>
+                {isDragOver ? 'Drop Image Here' : 'Upload Image'}
+              </span>
+              <span className={`text-xs transition-colors duration-200 ${
+                isDragOver ? 'text-blue-500' : 'text-slate-500'
+              }`}>
+                {isDragOver ? 'Release to upload' : 'JPG, PNG up to 10MB'}
+              </span>
+              
+              {/* Drag and drop hint */}
+              <div className={`text-xs text-center px-3 py-1 rounded-full transition-all duration-200 ${
+                isDragOver 
+                  ? 'bg-blue-100 text-blue-700' 
+                  : 'bg-slate-100 text-slate-500'
+              }`}>
+                {isDragOver ? '🎯' : '📁'} Drag & drop or click to browse
+              </div>
+            </div>
 
             <Button
-              onClick={openCamera}
+              onClick={() => {
+                console.log('📱 Camera button clicked');
+                console.log('🔍 Camera permission state:', hasCameraPermission);
+                if (hasCameraPermission === false) {
+                  console.log('🔐 Requesting camera permission...');
+                  checkCameraPermission();
+                } else {
+                  console.log('📸 Opening camera...');
+                  openCamera();
+                }
+              }}
               variant="outline"
-              className="h-32 flex flex-col items-center justify-center gap-3 border-2 border-dashed border-slate-300 hover:border-green-400 hover:bg-green-50"
+              className={`h-32 flex flex-col items-center justify-center gap-3 border-2 border-dashed ${
+                hasCameraPermission === false 
+                  ? 'border-red-300 hover:border-red-400 hover:bg-red-400 hover:bg-red-50' 
+                  : 'border-slate-300 hover:border-green-400 hover:bg-green-50'
+              }`}
             >
-              <Camera className="w-8 h-8 text-slate-400" />
-              <span className="text-slate-600">Take Photo</span>
-              <span className="text-xs text-slate-500">Use camera</span>
+              <Camera className={`w-8 h-8 ${
+                hasCameraPermission === false ? 'text-red-400' : 'text-slate-400'
+              }`} />
+              <span className={hasCameraPermission === false ? 'text-red-600' : 'text-slate-600'}>
+                {hasCameraPermission === false ? 'Grant Camera Permission' : 'Take Photo'}
+              </span>
+              <span className={`text-xs ${
+                hasCameraPermission === false ? 'text-red-500' : 'text-slate-500'
+              }`}>
+                {hasCameraPermission === false ? 'Click to request access' : 'Use camera'}
+              </span>
             </Button>
+            
+            {/* Debug Camera Button */}
+            <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="text-xs text-slate-600 mb-2">
+                <strong>Debug Camera:</strong> Click to test camera functionality
+              </div>
+              <Button
+                onClick={() => {
+                  console.log('🔧 Debug camera button clicked');
+                  console.log('📱 Navigator mediaDevices:', !!navigator.mediaDevices);
+                  console.log('🎥 getUserMedia support:', !!navigator.mediaDevices?.getUserMedia);
+                  console.log('📱 Permissions API:', !!navigator.permissions);
+                  console.log('🔍 Current state:', {
+                    hasCameraPermission,
+                    isCameraOpen,
+                    isProcessing,
+                    videoRef: !!videoRef.current,
+                    canvasRef: !!canvasRef.current
+                  });
+                }}
+                variant="outline"
+                size="sm"
+                className="w-full text-xs"
+              >
+                🔧 Debug Camera
+              </Button>
+            </div>
           </div>
         )}
 
@@ -213,30 +494,74 @@ export default function ImageIngredientRecognition({ onIngredientsDetected, onCl
           className="hidden"
         />
 
+        {/* Hidden canvas for photo capture */}
+        <canvas
+          ref={canvasRef}
+          className="hidden"
+        />
+
         {/* Camera View */}
         {isCameraOpen && (
           <div className="space-y-4">
-            <div className="relative">
+            <div className="relative bg-slate-100 rounded-lg overflow-hidden">
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
-                className="w-full h-64 object-cover rounded-lg border border-slate-200"
+                muted
+                className="w-full h-64 md:h-80 object-cover"
+                style={{ transform: 'scaleX(-1)' }} // Mirror the video for better UX
+                onLoadStart={() => console.log('🎬 Video load started')}
+                onCanPlay={() => console.log('🎬 Video can play')}
+                onLoadedData={() => console.log('🎬 Video data loaded')}
+                onLoadedMetadata={() => console.log('🎬 Video metadata loaded')}
+                onError={(e) => console.error('❌ Video error event:', e)}
               />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="border-2 border-white border-dashed rounded-lg w-48 h-32 flex items-center justify-center">
-                  <span className="text-white text-sm font-medium">Aim at ingredients</span>
+              
+              {/* Loading overlay */}
+              {isProcessing && (
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                  <div className="text-center text-white">
+                    <Loader2 className="w-8 h-8 mx-auto mb-2 animate-spin" />
+                    <p className="text-sm">Initializing camera...</p>
+                  </div>
                 </div>
-              </div>
+              )}
+              
+              {/* Camera guide overlay */}
+              {!isProcessing && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="border-2 border-white border-dashed rounded-lg w-48 h-32 flex items-center justify-center bg-black/20">
+                    <span className="text-white text-sm font-medium text-center">
+                      Aim at ingredients
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
+            
             <div className="flex gap-3">
-              <Button onClick={capturePhoto} className="flex-1">
+              <Button 
+                onClick={capturePhoto} 
+                className="flex-1"
+                disabled={isProcessing}
+              >
                 <Camera className="w-4 h-4 mr-2" />
-                Capture Photo
+                {isProcessing ? 'Initializing...' : 'Capture Photo'}
               </Button>
               <Button onClick={closeCamera} variant="outline">
                 Cancel
               </Button>
+            </div>
+            
+            {/* Camera tips */}
+            <div className="text-xs text-slate-500 text-center p-3 bg-slate-50 rounded-lg">
+              💡 <strong>Tip:</strong> Hold your device steady and ensure good lighting for best results
+            </div>
+            
+            {/* Mobile camera help */}
+            <div className="text-xs text-slate-500 text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+              📱 <strong>Mobile Users:</strong> If camera doesn't work, try refreshing the page or check browser settings for camera permissions
             </div>
           </div>
         )}
@@ -287,9 +612,21 @@ export default function ImageIngredientRecognition({ onIngredientsDetected, onCl
 
         {/* Error Display */}
         {error && (
-          <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <AlertCircle className="w-4 h-4 text-red-600" />
-            <span className="text-red-700 text-sm">{error}</span>
+          <div className="space-y-3 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-600" />
+              <span className="text-red-700 text-sm font-medium">{error}</span>
+            </div>
+            
+            {/* Debug Information */}
+            <div className="text-xs text-red-600 bg-red-100 p-2 rounded">
+              <div><strong>Debug Info:</strong></div>
+              <div>Camera Permission: {hasCameraPermission === null ? 'Checking...' : hasCameraPermission ? 'Granted' : 'Denied'}</div>
+              <div>Camera Open: {isCameraOpen ? 'Yes' : 'No'}</div>
+              <div>Processing: {isProcessing ? 'Yes' : 'No'}</div>
+              <div>Video Ref: {videoRef.current ? 'Available' : 'Not Available'}</div>
+              <div>Canvas Ref: {canvasRef.current ? 'Available' : 'Not Available'}</div>
+            </div>
           </div>
         )}
 
@@ -360,6 +697,17 @@ export default function ImageIngredientRecognition({ onIngredientsDetected, onCl
           </div>
         </div>
       </CardContent>
+      
+      {/* Global drag overlay */}
+      {isDragOver && (
+        <div className="absolute inset-0 bg-blue-500/10 border-2 border-dashed border-blue-500 rounded-lg flex items-center justify-center pointer-events-none">
+          <div className="text-center text-blue-700 bg-white/90 px-6 py-4 rounded-lg shadow-lg">
+            <Upload className="w-12 h-12 mx-auto mb-2 text-blue-500" />
+            <p className="text-lg font-semibold">Drop your image here</p>
+            <p className="text-sm">Release to upload and analyze</p>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

@@ -1,7 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server'
-import dbConnect from '../../../../lib/mongodb'
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const Recipe = require('../../../../models/Recipe')
+import { dbConnect, Recipe } from '@/lib/db'
 
 const SEED_RECIPES = [
   { name: 'Margherita Pizza', cuisine: 'Italian', ingredients: ['Pizza dough', 'Tomato sauce', 'Mozzarella', 'Basil', 'Olive oil', 'Salt'], instructions: ['Preheat oven to 250°C/480°F', 'Spread sauce on dough', 'Top with mozzarella', 'Bake 7-10 min until bubbly', 'Finish with basil and olive oil'], nutrition: { calories: 280, protein: 12, fat: 9, carbs: 36 }, tags: ['Vegetarian'], difficulty: 'Medium', time: '30 minutes' },
